@@ -4,7 +4,7 @@
 #include <map>
 #include "Term.h"
 
-#define debug 1;
+#define debug 1
 
 using namespace std;
 
@@ -27,8 +27,10 @@ public:
     map<std::string,int> vars;
     map<std::string,Closure> funcs;
     Env *access_link;
+    bool ret;
+    int retv;
 
-    Env():access_link(NULL){}
+    Env():access_link(NULL),ret(false),retv(0){}
 
     void setvar(string &name,int value){
         if(vars.find(name)!=vars.end())
@@ -64,16 +66,28 @@ public:
 
 int run_expr(Term *t,Env *env);
 bool run_boolexpr(Term *t,Env *env);
+void run_block(Term *t,Env *envp,Env *fenv,Env *env=NULL);
 
-int run_func(Closure &closure,vector<Term*> &args){
-    //TODO
-    return 0;
+int run_func(Closure &closure,vector<Term*> &args,Env *env){
+    Env *fenv=new Env();
+    fenv->access_link=closure.env;
+    if(debug)cout<<closure.code->sons[0]->name<<" is called"<<endl;
+    for(int i=1;i<args.size();i++){
+        int arg_value=run_expr(args[i],env);
+        string &arg_name=closure.code->sons[i]->name;
+        if(debug)cout<<arg_name<<" = "<<arg_value<<endl;
+        fenv->vars[arg_name]=arg_value;
+    }
+    run_block(closure.code->sons[closure.code->sons.size()-1],NULL,fenv,fenv);
+    return fenv->retv;
 }
 
-int run_block(Term *t,Env *envp){
+void run_block(Term *t,Env *envp,Env *fenv,Env *env){
     assert(t->kind==Block);
-    Env *env=new Env(); //???
-    env->access_link=envp;
+    if(!env){
+        env=new Env();
+        env->access_link=envp;
+    }
     for(Term *s:t->sons){ //block -> Begin (function|command)* End
         assert(s->kind==Function||s->kind==Command);
         if(s->kind==Function){
@@ -81,13 +95,14 @@ int run_block(Term *t,Env *envp){
         }else if(s->kind==Command){
             switch(s->subtype){
             case Declaration:
+                //if(debug)cout<<"var "<<s->sons[0]->name<<endl;
                 env->vars[s->sons[0]->name]=0;
                 break;
             case Assign:
                 env->setvar(s->sons[0]->name,run_expr(s->sons[1],env));
                 break;
             case Call:
-                run_func(env->getfunc(t->sons[0]->name),t->sons);
+                run_func(env->getfunc(t->sons[0]->name),t->sons,env);
                 break;
             case Read:
                 int n;
@@ -99,22 +114,28 @@ int run_block(Term *t,Env *envp){
                 break;
             case If:
                 if(run_boolexpr(s->sons[0],env))
-                    run_block(s->sons[1],env);
+                    run_block(s->sons[1],env,fenv);
                 else
-                    run_block(s->sons[2],env);
+                    run_block(s->sons[2],env,fenv);
                 break;
             case While:
-                while(run_boolexpr(s->sons[0],env))
-                    run_block(s->sons[1],env);
+                while(run_boolexpr(s->sons[0],env)){
+                    run_block(s->sons[1],env,fenv);
+                    if(fenv&&fenv->ret)return;
+                }
                 break;
             case Return:
-                return run_expr(s->sons[0],env);
+                assert(fenv);
+                fenv->retv=run_expr(s->sons[0],env);
+                fenv->ret=true;
+                break;
             default:
+                if(debug)cout<<s->subtype<<endl;
                 assert(0);
             }
         }
+        if(fenv&&fenv->ret)return;
     }
-    return 0;
 }
 
 int run_expr(Term *t,Env *env){
@@ -135,7 +156,7 @@ int run_expr(Term *t,Env *env){
     case Mod:
         return run_expr(t->sons[0],env)%run_expr(t->sons[1],env);
     case Apply:
-        return run_func(env->getfunc(t->sons[0]->name),t->sons);
+        return run_func(env->getfunc(t->sons[0]->name),t->sons,env);
     default:
         assert(0);
     }
@@ -165,6 +186,6 @@ int main()
 {
     Term *t=parse(program);
     //t->print();
-    run_block(t,new Env());
+    run_block(t,new Env(),NULL);
     return 0;
 }
