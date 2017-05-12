@@ -1,13 +1,15 @@
 #!/bin/bash
 
-cd tests
+cd tests;
 for f in *.m;
 do
-    cp "$f" program.txt
-    cp "$(basename "$f" .m).in" input.txt
-    ../main
-    diff "$(basename "$f" .m).out" output.txt
+    cp "$f" program.txt;
+    cp "$(basename "$f" .m).in" input.txt;
+    ../main;
+    if ! diff "$(basename "$f" .m).out" output.txt; then
+        cat "$(basename "$f" .m).out" output.txt;
+    fi
 done
-rm program.txt
-rm input.txt
-rm output.txt
+rm program.txt;
+rm input.txt;
+rm output.txt;
