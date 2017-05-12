@@ -4,7 +4,7 @@
 #include <map>
 #include "Term.h"
 
-#define debug 1
+#define debug 0
 
 using namespace std;
 
@@ -102,7 +102,7 @@ void run_block(Term *t,Env *envp,Env *fenv,Env *env){
                 env->setvar(s->sons[0]->name,run_expr(s->sons[1],env));
                 break;
             case Call:
-                run_func(env->getfunc(t->sons[0]->name),t->sons,env);
+                run_func(env->getfunc(s->sons[0]->name),s->sons,env);
                 break;
             case Read:
                 int n;
@@ -110,7 +110,12 @@ void run_block(Term *t,Env *envp,Env *fenv,Env *env){
                 env->setvar(s->sons[0]->name,n);
                 break;
             case Print:
-                output<<run_expr(s->sons[0],env)<<endl;
+                int r;
+                r=run_expr(s->sons[0],env);
+                static bool first=true;
+                if(!first)output<<" ";
+                first=false;
+                output<<r;
                 break;
             case If:
                 if(run_boolexpr(s->sons[0],env))
@@ -185,7 +190,8 @@ bool run_boolexpr(Term *t,Env *env){
 int main()
 {
     Term *t=parse(program);
-    //t->print();
+    if(debug)t->print();
     run_block(t,new Env(),NULL);
+    output<<endl;
     return 0;
 }
