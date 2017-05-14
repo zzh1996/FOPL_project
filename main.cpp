@@ -66,7 +66,7 @@ public:
 
 int run_expr(Term *t,Env *env);
 bool run_boolexpr(Term *t,Env *env);
-void run_block(Term *t,Env *envp,Env *fenv,Env *env=NULL);
+void run_block(Term *t,Env *envp,Env *fenv,int start_son=0,Env *env=NULL);
 
 int run_func(Closure &closure,vector<Term*> &args,Env *env){
     Env *fenv=new Env();
@@ -78,17 +78,18 @@ int run_func(Closure &closure,vector<Term*> &args,Env *env){
         if(debug)cout<<arg_name<<" = "<<arg_value<<endl;
         fenv->vars[arg_name]=arg_value;
     }
-    run_block(closure.code->sons[closure.code->sons.size()-1],NULL,fenv,fenv);
+    run_block(closure.code->sons[closure.code->sons.size()-1],NULL,fenv,0,fenv);
     return fenv->retv;
 }
 
-void run_block(Term *t,Env *envp,Env *fenv,Env *env){
+void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
     assert(t->kind==Block);
     if(!env){
         env=new Env();
         env->access_link=envp;
     }
-    for(Term *s:t->sons){ //block -> Begin (function|command)* End
+    if(start_son<t->sons.size()){
+        Term *s=t->sons[start_son];
         assert(s->kind==Function||s->kind==Command);
         if(s->kind==Function){
             env->funcs[s->sons[0]->name]=Closure(s,env);
@@ -140,6 +141,7 @@ void run_block(Term *t,Env *envp,Env *fenv,Env *env){
             }
         }
         if(fenv&&fenv->ret)return;
+        run_block(t,env,fenv,start_son+1);
     }
 }
 
