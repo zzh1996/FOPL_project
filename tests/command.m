@@ -26,4 +26,22 @@ Begin
     Call g Argus x y z End
     Print Apply f Argus End
     Print Apply h Argus End
+    Function r Paras
+    Begin
+        Var t End
+        Assign t 1
+        If Eq t 1
+        Begin
+            Print 100
+            If Eq t 1
+            Begin
+                Print 101
+                Return 0
+                Print 102
+            End Else Begin End
+            Print 103
+        End Else Begin End
+        Print 104
+    End
+    Call r Argus End
 End
