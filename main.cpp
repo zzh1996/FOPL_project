@@ -2,6 +2,7 @@
 #include <fstream>
 #include <cassert>
 #include <map>
+#include <set>
 #include "Term.h"
 
 #define debug 0
@@ -90,12 +91,19 @@ std::ostream &operator<<(std::ostream &os,const Var &v) {
 
 class Env{
 public:
+    static set<Env*> envs;
     map<std::string,Var> vars;
     Env *access_link;
     bool ret;
     Var retv;
 
-    Env():access_link(NULL),ret(false),retv(Var(0)){}
+    Env():access_link(NULL),ret(false),retv(Var(0)){
+        envs.insert(this);
+    }
+
+    ~Env(){
+        envs.erase(this);
+    }
 
     void setvar(string &name,Var var){
         if(vars.find(name)!=vars.end())
@@ -117,6 +125,14 @@ public:
         }
     }
 };
+
+set<Env*> Env::envs;
+
+void gc(Env *env){
+    //TODO
+    //consider control link!
+    //traverse env and delete from Env::envs and delete the rest
+}
 
 Var run_expr(Term *t,Env *env);
 bool run_boolexpr(Term *t,Env *env);
