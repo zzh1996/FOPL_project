@@ -22,26 +22,91 @@ public:
     Closure(Term *code,Env *env):code(code),env(env){}
 };
 
+enum VarType{NUM,FUNC,UNDEF};
+
+class Var{
+public:
+    VarType type;
+    int num;
+    Closure func;
+
+    Var():type(UNDEF){}
+    Var(int n):type(NUM),num(n){}
+    Var(Closure c):type(FUNC),func(c){}
+
+    Var operator+(Var rhs){
+        assert(type==NUM&&rhs.type==NUM);
+        return Var(num+rhs.num);
+    }
+
+    Var operator-(Var rhs){
+        assert(type==NUM&&rhs.type==NUM);
+        return Var(num-rhs.num);
+    }
+
+    Var operator*(Var rhs){
+        assert(type==NUM&&rhs.type==NUM);
+        return Var(num*rhs.num);
+    }
+
+    Var operator/(Var rhs){
+        assert(type==NUM&&rhs.type==NUM);
+        return Var(num/rhs.num);
+    }
+
+    Var operator%(Var rhs){
+        assert(type==NUM&&rhs.type==NUM);
+        return Var(num%rhs.num);
+    }
+
+    bool operator<(Var rhs){
+        assert(type==NUM&&rhs.type==NUM);
+        return num<rhs.num;
+    }
+    bool operator>(Var rhs){
+        assert(type==NUM&&rhs.type==NUM);
+        return num>rhs.num;
+    }
+    bool operator==(Var rhs){
+        assert(type==NUM&&rhs.type==NUM);
+        return num==rhs.num;
+    }
+};
+
+std::ostream &operator<<(std::ostream &os,const Var &v) {
+    switch(v.type){
+    case NUM:
+        os<<v.num;
+        break;
+    case FUNC:
+        os<<v.func.code->sons[0]->name;
+        break;
+    case UNDEF:
+        os<<"Undefined";
+        break;
+    }
+    return os;
+}
+
 class Env{
 public:
-    map<std::string,int> vars;
-    map<std::string,Closure> funcs;
+    map<std::string,Var> vars;
     Env *access_link;
     bool ret;
-    int retv;
+    Var retv;
 
-    Env():access_link(NULL),ret(false),retv(0){}
+    Env():access_link(NULL),ret(false),retv(Var(0)){}
 
-    void setvar(string &name,int value){
+    void setvar(string &name,Var var){
         if(vars.find(name)!=vars.end())
-            vars[name]=value;
+            vars[name]=var;
         else if(access_link)
-            access_link->setvar(name,value);
+            access_link->setvar(name,var);
         else
             cout<<"name not found: "<<name<<endl;
     }
 
-    int getvar(string &name){
+    Var getvar(string &name){
         if(vars.find(name)!=vars.end())
             return vars[name];
         else if(access_link)
@@ -51,29 +116,20 @@ public:
             assert(0);
         }
     }
-
-    Closure &getfunc(string &name){
-        if(funcs.find(name)!=funcs.end())
-            return funcs[name];
-        else if(access_link)
-            return access_link->getfunc(name);
-        else{
-            cout<<"name not found: "<<name<<endl;
-            assert(0);
-        }
-    }
 };
 
-int run_expr(Term *t,Env *env);
+Var run_expr(Term *t,Env *env);
 bool run_boolexpr(Term *t,Env *env);
 void run_block(Term *t,Env *envp,Env *fenv,int start_son=0,Env *env=NULL);
 
-int run_func(Closure &closure,vector<Term*> &args,Env *env){
+Var run_func(Var var,vector<Term*> &args,Env *env){
+    assert(var.type==FUNC);
+    Closure closure=var.func;
     Env *fenv=new Env();
     fenv->access_link=closure.env;
     if(debug)cout<<closure.code->sons[0]->name<<" is called"<<endl;
     for(int i=1;i<args.size();i++){
-        int arg_value=run_expr(args[i],env);
+        Var arg_value=run_expr(args[i],env);
         string &arg_name=closure.code->sons[i]->name;
         if(debug)cout<<arg_name<<" = "<<arg_value<<endl;
         fenv->vars[arg_name]=arg_value;
@@ -92,31 +148,35 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
         Term *s=t->sons[start_son];
         assert(s->kind==Function||s->kind==Command);
         if(s->kind==Function){
-            env->funcs[s->sons[0]->name]=Closure(s,env);
+            env->vars[s->sons[0]->name]=Var(Closure(s,env));
         }else if(s->kind==Command){
             switch(s->subtype){
             case Declaration:
                 //if(debug)cout<<"var "<<s->sons[0]->name<<endl;
-                env->vars[s->sons[0]->name]=0;
+                env->vars[s->sons[0]->name]=Var();
                 break;
             case Assign:
                 env->setvar(s->sons[0]->name,run_expr(s->sons[1],env));
                 break;
             case Call:
-                run_func(env->getfunc(s->sons[0]->name),s->sons,env);
+                run_func(env->getvar(s->sons[0]->name),s->sons,env);
                 break;
             case Read:
                 int n;
                 input>>n;
-                env->setvar(s->sons[0]->name,n);
+                env->setvar(s->sons[0]->name,Var(n));
                 break;
             case Print:
-                int r;
-                r=run_expr(s->sons[0],env);
-                static bool first=true;
-                if(!first)output<<" ";
-                first=false;
-                output<<r;
+                {
+                    Var r;
+                    r=run_expr(s->sons[0],env);
+                    if(r.type==NUM){
+                        static bool first=true;
+                        if(!first)output<<" ";
+                        first=false;
+                        output<<r.num;
+                    }
+                }
                 break;
             case If:
                 if(run_boolexpr(s->sons[0],env))
@@ -145,11 +205,11 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
     }
 }
 
-int run_expr(Term *t,Env *env){
+Var run_expr(Term *t,Env *env){
     assert(t->kind==Expr);
     switch(t->subtype){
     case Number:
-        return t->number;
+        return Var(t->number);
     case VarName:
         return env->getvar(t->name);
     case Plus:
@@ -163,7 +223,7 @@ int run_expr(Term *t,Env *env){
     case Mod:
         return run_expr(t->sons[0],env)%run_expr(t->sons[1],env);
     case Apply:
-        return run_func(env->getfunc(t->sons[0]->name),t->sons,env);
+        return run_func(env->getvar(t->sons[0]->name),t->sons,env);
     default:
         assert(0);
     }
