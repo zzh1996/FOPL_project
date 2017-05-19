@@ -153,7 +153,8 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
             switch(s->subtype){
             case Declaration:
                 //if(debug)cout<<"var "<<s->sons[0]->name<<endl;
-                env->vars[s->sons[0]->name]=Var();
+                for(Term *v:s->sons)
+                    env->vars[v->name]=Var();
                 break;
             case Assign:
                 env->setvar(s->sons[0]->name,run_expr(s->sons[1],env));
