@@ -6,6 +6,7 @@
 #include "Term.h"
 
 #define debug 0
+#define GC 1
 
 using namespace std;
 
@@ -93,11 +94,12 @@ class Env{
 public:
     static set<Env*> envs;
     map<std::string,Var> vars;
+    Env *control_link;
     Env *access_link;
     bool ret;
     Var retv;
 
-    Env():access_link(NULL),ret(false),retv(Var(0)){
+    Env(Env *control_link,Env* access_link):control_link(control_link),access_link(access_link),ret(false),retv(Var(0)){
         envs.insert(this);
     }
 
@@ -128,10 +130,28 @@ public:
 
 set<Env*> Env::envs;
 
-void gc(Env *env){
-    //TODO
-    //consider control link!
-    //traverse env and delete from Env::envs and delete the rest
+void remove_tree(Env *env,set<Env*> &s){
+    if(env&&s.find(env)!=s.end()){
+        s.erase(env);
+        remove_tree(env->control_link,s);
+        remove_tree(env->access_link,s);
+        if(env->retv.type==FUNC)
+            remove_tree(env->retv.func.env,s);
+        for(auto &i:env->vars){
+            Var &v=i.second;
+            if(v.type==FUNC)
+                remove_tree(v.func.env,s);
+        }
+    }
+}
+
+void gc(Env *env,Var *temp=NULL){
+    set<Env*> envs=Env::envs;
+    remove_tree(env,envs);
+    if(temp&&temp->type==FUNC)
+        remove_tree(temp->func.env,envs);
+    for(Env *e:envs)
+        delete e;
 }
 
 Var run_expr(Term *t,Env *env);
@@ -141,8 +161,7 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son=0,Env *env=NULL);
 Var run_func(Var var,vector<Term*> &args,Env *env){
     assert(var.type==FUNC);
     Closure closure=var.func;
-    Env *fenv=new Env();
-    fenv->access_link=closure.env;
+    Env *fenv=new Env(env,closure.env);
     if(debug)cout<<closure.code->sons[0]->name<<" is called"<<endl;
     for(int i=1;i<args.size();i++){
         Var arg_value=run_expr(args[i],env);
@@ -156,10 +175,8 @@ Var run_func(Var var,vector<Term*> &args,Env *env){
 
 void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
     assert(t->kind==Block);
-    if(!env){
-        env=new Env();
-        env->access_link=envp;
-    }
+    if(!env)
+        env=new Env(envp,envp);
     if(start_son<t->sons.size()){
         Term *s=t->sons[start_son];
         assert(s->kind==Function||s->kind==Command);
@@ -177,6 +194,7 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
                 break;
             case Call:
                 run_func(env->getvar(s->sons[0]->name),s->sons,env);
+                if(GC)gc(env);
                 break;
             case Read:
                 int n;
@@ -200,10 +218,12 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
                     run_block(s->sons[1],env,fenv);
                 else
                     run_block(s->sons[2],env,fenv);
+                if(GC)gc(env);
                 break;
             case While:
                 while(run_boolexpr(s->sons[0],env)){
                     run_block(s->sons[1],env,fenv);
+                    if(GC)gc(env);
                     if(fenv&&fenv->ret)return;
                 }
                 break;
@@ -224,6 +244,7 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
 
 Var run_expr(Term *t,Env *env){
     assert(t->kind==Expr);
+    Var retv;
     switch(t->subtype){
     case Number:
         return Var(t->number);
@@ -240,7 +261,9 @@ Var run_expr(Term *t,Env *env){
     case Mod:
         return run_expr(t->sons[0],env)%run_expr(t->sons[1],env);
     case Apply:
-        return run_func(env->getvar(t->sons[0]->name),t->sons,env);
+        retv=run_func(env->getvar(t->sons[0]->name),t->sons,env);
+        if(GC)gc(env,&retv);
+        return retv;
     default:
         assert(0);
     }
@@ -270,7 +293,7 @@ int main()
 {
     Term *t=parse(program);
     if(debug)t->print();
-    run_block(t,new Env(),NULL);
+    run_block(t,new Env(NULL,NULL),NULL);
     output<<endl;
     return 0;
 }
