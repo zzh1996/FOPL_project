@@ -3,10 +3,13 @@
 #include <cassert>
 #include <map>
 #include <set>
+#include <ctime>
 #include "Term.h"
 
 #define debug 0
 #define GC 1
+#define TIME_GC 1
+#define MONITOR 0
 
 using namespace std;
 
@@ -146,12 +149,25 @@ void remove_tree(Env *env,set<Env*> &s){
 }
 
 void gc(Env *env,Var *temp=NULL){
-    set<Env*> envs=Env::envs;
-    remove_tree(env,envs);
-    if(temp&&temp->type==FUNC)
-        remove_tree(temp->func.env,envs);
-    for(Env *e:envs)
-        delete e;
+#ifdef TIME_GC
+    static time_t last_time=time(0);
+    if(time(0)>=last_time+TIME_GC){
+#endif
+        if(GC){
+            set<Env*> envs=Env::envs;
+            remove_tree(env,envs);
+            if(temp&&temp->type==FUNC)
+                remove_tree(temp->func.env,envs);
+            for(Env *e:envs)
+                delete e;
+        }
+        if(MONITOR){
+            cout<<time(0)<<"\t"<<Env::envs.size()<<endl;
+        }
+#ifdef TIME_GC
+        last_time=time(0);
+    }
+#endif
 }
 
 Var run_expr(Term *t,Env *env);
@@ -194,7 +210,7 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
                 break;
             case Call:
                 run_func(env->getvar(s->sons[0]->name),s->sons,env);
-                if(GC)gc(env);
+                gc(env);
                 break;
             case Read:
                 int n;
@@ -218,12 +234,12 @@ void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
                     run_block(s->sons[1],env,fenv);
                 else
                     run_block(s->sons[2],env,fenv);
-                if(GC)gc(env);
+                gc(env);
                 break;
             case While:
                 while(run_boolexpr(s->sons[0],env)){
                     run_block(s->sons[1],env,fenv);
-                    if(GC)gc(env);
+                    gc(env);
                     if(fenv&&fenv->ret)return;
                 }
                 break;
@@ -262,7 +278,7 @@ Var run_expr(Term *t,Env *env){
         return run_expr(t->sons[0],env)%run_expr(t->sons[1],env);
     case Apply:
         retv=run_func(env->getvar(t->sons[0]->name),t->sons,env);
-        if(GC)gc(env,&retv);
+        gc(env,&retv);
         return retv;
     default:
         assert(0);
