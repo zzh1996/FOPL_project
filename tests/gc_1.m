@@ -11,7 +11,7 @@ Begin
     Var i sum End
     Assign i 0
     Assign sum 0
-    While Lt i 500000
+    While Lt i 200000
     Begin
         Var c End
         Assign c Apply makefunc Argus i End

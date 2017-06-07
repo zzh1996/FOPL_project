@@ -6,10 +6,10 @@
 #include <ctime>
 #include "Term.h"
 
-#define debug 0
-#define GC 1
-#define TIME_GC 1
-#define MONITOR 0
+#define debug 0 //输出调试信息开关
+#define GC 1 //垃圾回收开关
+#define TIME_GC 1 //两次GC的间隔时间（秒）
+#define MONITOR 0 //输出GC的监视信息开关
 
 using namespace std;
 
@@ -133,31 +133,31 @@ public:
 
 set<Env*> Env::envs;
 
-void remove_tree(Env *env,set<Env*> &s){
+void remove_env(Env *env,set<Env*> &s){ //从集合s中删除从env可达的所有活动记录
     if(env&&s.find(env)!=s.end()){
         s.erase(env);
-        remove_tree(env->control_link,s);
-        remove_tree(env->access_link,s);
+        remove_env(env->control_link,s);
+        remove_env(env->access_link,s);
         if(env->retv.type==FUNC)
-            remove_tree(env->retv.func.env,s);
+            remove_env(env->retv.func.env,s);
         for(auto &i:env->vars){
             Var &v=i.second;
             if(v.type==FUNC)
-                remove_tree(v.func.env,s);
+                remove_env(v.func.env,s);
         }
     }
 }
 
-void gc(Env *env,Var *temp=NULL){
+void gc(Env *env,Var *temp=NULL){ //回收从env和temp不可达的所有活动记录
 #ifdef TIME_GC
     static time_t last_time=time(0);
     if(time(0)>=last_time+TIME_GC){
 #endif
         if(GC){
             set<Env*> envs=Env::envs;
-            remove_tree(env,envs);
+            remove_env(env,envs);
             if(temp&&temp->type==FUNC)
-                remove_tree(temp->func.env,envs);
+                remove_env(temp->func.env,envs);
             for(Env *e:envs)
                 delete e;
         }
@@ -174,6 +174,7 @@ Var run_expr(Term *t,Env *env);
 bool run_boolexpr(Term *t,Env *env);
 void run_block(Term *t,Env *envp,Env *fenv,int start_son=0,Env *env=NULL);
 
+//var:函数 args:实参列表 env:当前活动记录
 Var run_func(Var var,vector<Term*> &args,Env *env){
     assert(var.type==FUNC);
     Closure closure=var.func;
@@ -189,6 +190,8 @@ Var run_func(Var var,vector<Term*> &args,Env *env){
     return fenv->retv;
 }
 
+//t:block的Term envp:外层活动记录 fenv:当前函数活动记录
+//start_son:当前位置（sons中的第几个） env:新的活动记录
 void run_block(Term *t,Env *envp,Env *fenv,int start_son,Env *env){
     assert(t->kind==Block);
     if(!env)
